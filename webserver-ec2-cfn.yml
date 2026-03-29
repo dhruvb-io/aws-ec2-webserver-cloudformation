@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Template for Web Server
+
+# ========================
+# PARAMETERS
+# ========================
+
+Parameters:
+  InstanceType:
+    Description: Web Server Instance Type
+    Type: String 
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+    ConstraintDescription: must be a valid instance Type
+
+  KeyName:
+    Description: EC2 Key Pair
+    Type: AWS::EC2::KeyPair::KeyName
+
+# ========================
+# RESOURCES
+# ========================
+
+Resources:
+
+  # ========================
+  # SECURITY
+  # ========================
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH access
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  # ========================
+  # COMPUTE
+  # ========================
+
+  MyEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+
+      InstanceType:
+        Ref: InstanceType
+
+      KeyName:
+        Ref: KeyName
+
+      SecurityGroupIds:
+        - Ref: WebServerSecurityGroup
+
+      Tags:
+        - Key: Name
+          Value: WebServer
+
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          yum update -y
+          yum install httpd -y
+          systemctl start httpd
+          systemctl enable httpd
+          echo "<html><body><h1>Dhruv Bansal!</h1></body></html>" > /var/www/html/index.html
+
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 8
+            DeleteOnTermination: true
+
+# ========================
+# OUTPUTS
+# ========================
+
+Outputs:
+
+  PublicIP:
+    Description: EC2 Public IP
+    Value:
+      Fn::GetAtt:
+        - MyEC2Instance
+        - PublicIp
+
+  WebsiteURL:
+    Description: Website URL
+    Value:
+      Fn::Sub: "http://${MyEC2Instance.PublicDnsName}"
